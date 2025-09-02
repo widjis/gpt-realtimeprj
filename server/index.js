@@ -154,33 +154,13 @@ app.post('/api/session', async (req, res) => {
     }
 
     // Create ephemeral session with OpenAI
-    const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-          model: 'gpt-4o-realtime-preview-2024-12-17',
-          voice: 'alloy',
-          modalities: ['text', 'audio'],
-          instructions: 'You are MARISA, a helpful AI assistant. When you receive messages with [SCREEN_CAPTURE] prefix containing base64 image data, acknowledge that you have received the screen capture and explain that while you can see the base64 data, you currently cannot process the visual content directly due to API limitations. Offer to help with other tasks and suggest alternative ways to assist the user.',
-          input_audio_format: 'pcm16',
-          output_audio_format: 'pcm16',
-          input_audio_transcription: {
-            model: 'whisper-1'
-          },
-          turn_detection: {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 200
-          },
-          tools: [],
-          tool_choice: 'auto',
-          temperature: 0.8,
-          max_response_output_tokens: 4096
-        })
+      body: JSON.stringify({})
     })
 
     if (!response.ok) {

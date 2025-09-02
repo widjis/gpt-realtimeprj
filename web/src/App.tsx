@@ -234,7 +234,7 @@ function App() {
       }
       
       const sessionData = await response.json()
-      const ephemeralToken = sessionData.client_secret.value
+      const ephemeralToken = sessionData.value
       
       // Get user media (microphone)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -438,7 +438,7 @@ function App() {
       await pc.setLocalDescription(offer)
       
       // Send offer to OpenAI
-      const sdpResponse = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17', {
+      const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls?model=gpt-realtime', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${ephemeralToken}`,
@@ -448,7 +448,13 @@ function App() {
       })
       
       if (!sdpResponse.ok) {
-        throw new Error('Failed to establish WebRTC connection')
+        const errorText = await sdpResponse.text()
+        console.error('WebRTC connection failed:', {
+          status: sdpResponse.status,
+          statusText: sdpResponse.statusText,
+          response: errorText
+        })
+        throw new Error(`Failed to establish WebRTC connection: ${sdpResponse.status} ${sdpResponse.statusText} - ${errorText}`)
       }
       
       const answerSdp = await sdpResponse.text()
@@ -497,11 +503,6 @@ function App() {
   }
   
   useEffect(() => {
-    // Create audio element for playback
-    const audio = document.createElement('audio')
-    audio.autoplay = true
-    audioElementRef.current = audio
-    
     // Fetch MCP tools on mount
     fetchMCPTools()
     
@@ -675,6 +676,14 @@ function App() {
             </div>
           </div>
         )}
+        
+        {/* Hidden Audio Element for WebRTC Audio Playback */}
+        <audio 
+          ref={audioElementRef}
+          autoPlay
+          playsInline
+          style={{ display: 'none' }}
+        />
         
         {/* Conversation Log */}
         <div className="jarvis-border rounded-lg p-6">
