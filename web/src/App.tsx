@@ -6,6 +6,8 @@ interface ConnectionState {
   error?: string
 }
 
+
+
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>({ status: 'disconnected' })
   const [isListening, setIsListening] = useState(false)
@@ -13,7 +15,10 @@ function App() {
   const [mcpTools, setMcpTools] = useState<Array<{ name: string; description: string; inputSchema: object }>>([])  
   const [mcpStatus, setMcpStatus] = useState<'loading' | 'connected' | 'error'>('loading')
   const [conversationMessages, setConversationMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string, timestamp: Date}>>([]) 
-  const [conversationContext, setConversationContext] = useState<Array<{role: 'user' | 'assistant', content: string}>>([])
+  const [conversationContext, setConversationContext] = useState<Array<{role: 'user' | 'assistant', content: string, hasScreenCapture?: boolean}>>([])  
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
+  const [lastScreenCapture, setLastScreenCapture] = useState<string | null>(null)
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
@@ -58,9 +63,9 @@ function App() {
   }
 
   // Helper function to update conversation context (last 5 exchanges)
-  const updateConversationContext = (role: 'user' | 'assistant', content: string) => {
+  const updateConversationContext = (role: 'user' | 'assistant', content: string, hasScreenCapture = false) => {
     setConversationContext(prev => {
-      const newContext = [...prev, { role, content }]
+      const newContext = [...prev, { role, content, hasScreenCapture }]
       // Keep only last 5 exchanges (10 messages total - 5 user + 5 assistant)
       return newContext.slice(-10)
     })
@@ -71,10 +76,21 @@ function App() {
     if (conversationContext.length === 0) return ''
     
     const contextString = conversationContext
-      .map(msg => `${msg.role === 'user' ? 'User' : 'MARISA'}: ${msg.content}`)
+      .map(msg => {
+        let content = `${msg.role === 'user' ? 'User' : 'MARISA'}: ${msg.content}`
+        if (msg.hasScreenCapture) {
+          content += ' [Screen capture included]'
+        }
+        return content
+      })
       .join('\n')
     
-    return `\n\n## Recent Conversation Context:\n${contextString}\n\nPlease maintain context awareness from the above conversation when responding.`
+    let screenSharingStatus = ''
+    if (isScreenSharing) {
+      screenSharingStatus = '\n\n## Screen Sharing Status: ACTIVE\nThe user is currently sharing their screen. You will receive periodic screen captures every 5 seconds. Analyze the visual content and provide relevant insights or assistance based on what you see.'
+    }
+    
+    return `\n\n## Recent Conversation Context:\n${contextString}\n\nPlease maintain context awareness from the above conversation when responding.${screenSharingStatus}`
   }
 
   // Function to update session with new conversation context
@@ -92,6 +108,114 @@ function App() {
       console.log('Updating session with conversation context')
       dataChannelRef.current.send(JSON.stringify(sessionConfig))
     }
+  }
+
+  // Screen capture functions
+  const startScreenCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+          frameRate: { ideal: 5, max: 10 }
+        },
+        audio: false
+      })
+      
+      setScreenStream(stream)
+      setIsScreenSharing(true)
+      
+      // Handle stream end (user stops sharing)
+      stream.getVideoTracks()[0].addEventListener('ended', () => {
+        stopScreenCapture()
+      })
+      
+      console.log('Screen capture started')
+      
+      // Start periodic screen capture
+      startPeriodicCapture(stream)
+      
+    } catch (error) {
+      console.error('Error starting screen capture:', error)
+      alert('Failed to start screen capture. Please ensure you grant permission.')
+    }
+  }
+  
+  const stopScreenCapture = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop())
+      setScreenStream(null)
+    }
+    setIsScreenSharing(false)
+    console.log('Screen capture stopped')
+  }
+  
+  const captureScreenFrame = async (stream: MediaStream): Promise<string | null> => {
+    try {
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.play()
+      
+      return new Promise((resolve) => {
+        video.addEventListener('loadedmetadata', () => {
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+          
+          ctx?.drawImage(video, 0, 0)
+          
+          // Convert to base64 with reduced quality for efficiency
+          const base64 = canvas.toDataURL('image/jpeg', 0.7)
+          
+          video.remove()
+          canvas.remove()
+          
+          resolve(base64)
+        })
+      })
+    } catch (error) {
+      console.error('Error capturing screen frame:', error)
+      return null
+    }
+  }
+  
+  const startPeriodicCapture = (stream: MediaStream) => {
+    const captureInterval = setInterval(async () => {
+      if (!isScreenSharing || !stream) {
+        clearInterval(captureInterval)
+        return
+      }
+      
+      const base64Image = await captureScreenFrame(stream)
+      if (base64Image) {
+        setLastScreenCapture(base64Image)
+        
+        // Send screen capture to GPT if connected
+        if (dataChannelRef.current && connectionState.status === 'connected') {
+          const imageMessage = {
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'user',
+              content: [
+                {
+                  type: 'input_text',
+                  text: `[SCREEN_CAPTURE] I'm sharing my screen with you. Here's the current screen capture as base64 image data: ${base64Image}`
+                }
+              ]
+            }
+          }
+          
+          console.log('Sending screen capture to GPT')
+          dataChannelRef.current.send(JSON.stringify(imageMessage))
+          
+          // Update conversation context to track screen capture
+          updateConversationContext('user', 'Screen capture sent', true)
+        }
+      }
+    }, 5000) // Capture every 5 seconds
   }
 
   const connectToRealtime = async () => {
@@ -281,6 +405,12 @@ function App() {
                 updateSessionWithContext()
               }
               break
+            case 'conversation.item.create':
+              // Track when screen captures are sent
+              if (data.item && data.item.content && data.item.content[0] && data.item.content[0].type === 'input_image') {
+                console.log('Screen capture sent to assistant')
+              }
+              break
             case 'response.function_call_arguments.delta':
               // Handle function call arguments streaming
               console.log('Function call arguments delta:', data)
@@ -424,23 +554,38 @@ function App() {
               </div>
             </div>
             
-            {connectionState.status === 'disconnected' && (
-              <button
-                onClick={connectToRealtime}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors jarvis-glow"
-              >
-                Initialize Connection
-              </button>
-            )}
-            
-            {connectionState.status === 'connected' && (
-              <button
-                onClick={disconnect}
-                className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
-              >
-                Disconnect
-              </button>
-            )}
+            <div className="flex gap-2">
+              {connectionState.status === 'disconnected' && (
+                <button
+                  onClick={connectToRealtime}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors jarvis-glow"
+                >
+                  Initialize Connection
+                </button>
+              )}
+              
+              {connectionState.status === 'connected' && (
+                <button
+                  onClick={disconnect}
+                  className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
+                >
+                  Disconnect
+                </button>
+              )}
+              
+              {connectionState.status === 'connected' && (
+                <button
+                  onClick={isScreenSharing ? stopScreenCapture : startScreenCapture}
+                  className={`px-4 py-2 rounded-md transition-colors ${
+                    isScreenSharing
+                      ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                      : 'bg-green-500 hover:bg-green-600 text-white'
+                  }`}
+                >
+                  {isScreenSharing ? '🛑 Stop Sharing' : '📺 Share Screen'}
+                </button>
+              )}
+            </div>
           </div>
           
           {connectionState.error && (
@@ -493,10 +638,40 @@ function App() {
                 )}
                 {!isSpeaking && <span className="text-muted-foreground text-sm">Standby</span>}
               </div>
+              
+              {/* Screen Sharing Status */}
+              {isScreenSharing && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse"></div>
+                  <span className="text-sm font-mono text-orange-600">
+                    Screen Sharing Active
+                  </span>
+                </div>
+              )}
             </div>
             
             <div className="text-center mt-4 text-sm text-muted-foreground">
               Hold to speak • Release to send
+            </div>
+          </div>
+        )}
+        
+        {/* Screen Capture Preview */}
+        {isScreenSharing && lastScreenCapture && (
+          <div className="jarvis-border rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4 jarvis-text">Screen Capture Preview</h3>
+            <div className="relative">
+              <img 
+                src={lastScreenCapture} 
+                alt="Screen capture preview" 
+                className="max-w-full h-auto rounded border max-h-48 object-contain bg-black/5"
+              />
+              <div className="absolute top-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
+                Live Preview
+              </div>
+            </div>
+            <div className="text-center mt-2 text-sm text-muted-foreground">
+              Captured every 5 seconds • Sent to MARISA for analysis
             </div>
           </div>
         )}

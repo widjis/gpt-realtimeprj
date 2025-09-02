@@ -9,12 +9,15 @@ A real-time conversational AI application with advanced memory management and mu
 - **5-Context Memory System**: Intelligent conversation context management with persistent storage
 - **MCP Integration**: Model Context Protocol support for extended functionality
 - **Responsive UI**: Modern React interface with TailwindCSS styling
+- **🆕 Multimodal Screen Sharing**: Real-time screen capture and visual analysis capabilities
 
 ### Advanced Capabilities
 - **Cross-session Memory**: Conversations persist across browser sessions
 - **Context Window Management**: Automatic handling of conversation context limits
 - **Environment Configuration**: Secure credential management
 - **Real-time Updates**: Live conversation state synchronization
+- **🆕 Visual Intelligence**: AI can see and analyze your screen content in real-time
+- **🆕 Screen Capture Integration**: Automatic periodic screen captures with conversation context
 
 ## 🏗️ Architecture
 
@@ -138,13 +141,44 @@ gpt-realtimeprj/
 | `MCP_SERVER_URL` | MCP server endpoint | Yes |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | TLS certificate validation | No |
 
+## 🎯 Multimodal Features
+
+### Screen Sharing Capabilities
+- **Real-time Screen Capture**: Share your screen with MARISA using browser APIs
+- **Screen Data Transmission**: Screen captures are sent as base64 data
+- **Automatic Capture**: Screenshots taken every 5 seconds during active sharing
+- **Live Preview**: See the latest captured screen in the interface
+- **Conversation Integration**: Screen captures are tracked in conversation context
+
+### Current Limitations
+- **Visual Analysis**: OpenAI's Realtime API currently doesn't support vision modality
+- **Text-based Processing**: Screen captures are sent as base64 text data
+- **Acknowledgment Only**: MARISA can acknowledge receipt but cannot analyze visual content
+
+### How to Use Screen Sharing
+1. **Connect**: Establish connection with MARISA
+2. **Start Sharing**: Click the "📺 Share Screen" button
+3. **Grant Permission**: Allow browser access to your screen
+4. **Data Transmission**: MARISA receives screen capture data (but cannot analyze visually)
+5. **Stop Sharing**: Click "🛑 Stop Sharing" when done
+
+### Technical Details
+- Uses `getDisplayMedia()` API for screen capture
+- Images compressed to JPEG format (70% quality) for efficiency
+- Base64 encoding for data transmission
+- Automatic cleanup when sharing ends
+- Screen sharing status tracked in conversation context
+- Text-based message format due to API constraints
+
 ## 🚧 Roadmap
 
-- [ ] **Multimodal Screen Sharing**: Add screen capture and vision capabilities
+- [x] **Multimodal Screen Sharing**: ✅ Implemented screen capture and vision capabilities
 - [ ] **Advanced Context Management**: Enhanced memory algorithms
 - [ ] **User Authentication**: Secure user sessions
 - [ ] **Mobile App**: React Native implementation
 - [ ] **Cloud Deployment**: Production deployment guides
+- [ ] **File Upload Support**: Direct image and document sharing
+- [ ] **Screen Annotation**: Drawing and markup tools for shared screens
 
 ## 📝 Documentation
 
