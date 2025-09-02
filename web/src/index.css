@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 199 89% 48%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* JARVIS-like animations and effects */
+@layer components {
+  .jarvis-glow {
+    @apply shadow-lg shadow-primary/20;
+    animation: pulse-glow 2s ease-in-out infinite alternate;
+  }
+  
+  .jarvis-border {
+    @apply border border-primary/30;
+    background: linear-gradient(45deg, transparent, rgba(59, 130, 246, 0.1), transparent);
+  }
+  
+  .jarvis-text {
+    @apply text-primary font-mono;
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+  }
+  
+  .speaking-indicator {
+    @apply w-3 h-3 bg-primary rounded-full;
+    animation: speaking-pulse 0.6s ease-in-out infinite alternate;
+  }
+  
+  .waveform-bar {
+    @apply bg-primary/60 rounded-sm;
+    animation: waveform 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+  }
+}
+
+@keyframes speaking-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}
+
+@keyframes waveform {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

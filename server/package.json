@@ -1,0 +1,25 @@
+{
+  "name": "jarvis-realtime-server",
+  "version": "1.0.0",
+  "description": "Backend server for JARVIS Realtime API integration",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "keywords": [
+    "openai",
+    "realtime",
+    "jarvis",
+    "webrtc"
+  ],
+  "author": "TRAE AI Agent",
+  "license": "MIT"
+}
