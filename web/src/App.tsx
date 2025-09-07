@@ -25,6 +25,9 @@ function App() {
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
   const conversationEndRef = useRef<HTMLDivElement | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioBufferQueueRef = useRef<ArrayBuffer[]>([])
+  const isPlayingAudioRef = useRef(false)
 
   // Load conversation context from localStorage on mount
   useEffect(() => {
@@ -45,6 +48,76 @@ function App() {
       localStorage.setItem('marisa-conversation-context', JSON.stringify(conversationContext))
     }
   }, [conversationContext])
+
+  // Initialize audio context for playback
+  const initializeAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)()
+    }
+    return audioContextRef.current
+  }
+
+  // Convert base64 audio to ArrayBuffer
+  const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+    const binaryString = window.atob(base64)
+    const len = binaryString.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes.buffer
+  }
+
+  // Play audio chunk
+  const playAudioChunk = async (audioData: ArrayBuffer) => {
+    try {
+      const audioContext = initializeAudioContext()
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
+      }
+
+      const audioBuffer = await audioContext.decodeAudioData(audioData.slice(0))
+      const source = audioContext.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(audioContext.destination)
+      
+      source.onended = () => {
+        processAudioQueue()
+      }
+      
+      source.start()
+      isPlayingAudioRef.current = true
+    } catch (error) {
+      console.error('Error playing audio chunk:', error)
+      isPlayingAudioRef.current = false
+      processAudioQueue()
+    }
+  }
+
+  // Process audio queue
+  const processAudioQueue = async () => {
+    if (isPlayingAudioRef.current || audioBufferQueueRef.current.length === 0) {
+      return
+    }
+
+    const nextChunk = audioBufferQueueRef.current.shift()
+    if (nextChunk) {
+      await playAudioChunk(nextChunk)
+    } else {
+      isPlayingAudioRef.current = false
+    }
+  }
+
+  // Add audio chunk to queue
+  const queueAudioChunk = (base64Audio: string) => {
+    try {
+      const audioData = base64ToArrayBuffer(base64Audio)
+      audioBufferQueueRef.current.push(audioData)
+      processAudioQueue()
+    } catch (error) {
+      console.error('Error queuing audio chunk:', error)
+    }
+  }
 
   const fetchMCPTools = async () => {
     try {
@@ -101,7 +174,31 @@ function App() {
       const sessionConfig = {
         type: 'session.update',
         session: {
-          instructions: baseInstructions + formatConversationContext()
+          type: 'realtime',
+          model: 'gpt-realtime',
+          instructions: baseInstructions + formatConversationContext(),
+          audio: {
+              input: {
+                  format: { type: "audio/pcm", rate: 24000 },
+                turn_detection: {
+                  type: 'server_vad',
+                  threshold: 0.5,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 500
+                }
+              },
+              output: {
+                  format: { type: "audio/pcm", rate: 24000 },
+                voice: 'alloy'
+              }
+            },
+          tools: mcpTools.map(tool => ({
+            type: 'function',
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          })),
+          tool_choice: 'auto'
         }
       }
       
@@ -333,20 +430,31 @@ function App() {
         const sessionConfig = {
           type: 'session.update',
           session: {
-            modalities: ['text', 'audio'],
+            type: 'realtime',
+            model: 'gpt-realtime',
             instructions: baseInstructions + formatConversationContext(),
-            voice: 'marin',
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
-            input_audio_transcription: {
-              model: 'whisper-1'
+            audio: {
+                input: {
+                  format: { type: "audio/pcm", rate: 24000 },
+                turn_detection: {
+                  type: 'server_vad',
+                  threshold: 0.5,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 500
+                }
+              },
+                output: {
+                  format: { type: "audio/pcm", rate: 24000 },
+                voice: 'alloy'
+              }
             },
             tools: mcpTools.map(tool => ({
               type: 'function',
               name: tool.name,
               description: tool.description,
               parameters: tool.inputSchema
-            }))
+            })),
+            tool_choice: 'auto'
           }
         }
         
@@ -386,9 +494,15 @@ function App() {
               break
             case 'response.audio.delta':
               setIsSpeaking(true)
+              if (data.delta) {
+                // Queue audio chunk for playback
+                queueAudioChunk(data.delta)
+              }
               break
             case 'response.audio.done':
               setIsSpeaking(false)
+              // Clear any remaining audio queue when response is complete
+              isPlayingAudioRef.current = false
               break
             case 'conversation.item.input_audio_transcription.completed':
               if (data.transcript) {
@@ -421,6 +535,10 @@ function App() {
                 console.log('Function call completed:', data.name, data.arguments)
                 await handleMCPToolCall(data.name, data.arguments, data.call_id)
               }
+              break
+            case 'error':
+              console.error('OpenAI Realtime API Error:', data.error)
+              setConnectionState({ status: 'error', error: `API Error: ${data.error?.message || 'Unknown error'}` })
               break
           }
         } catch (error) {
@@ -480,6 +598,14 @@ function App() {
       mediaStreamRef.current.getTracks().forEach(track => track.stop())
       mediaStreamRef.current = null
     }
+    
+    // Clean up audio context and queue
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    audioBufferQueueRef.current = []
+    isPlayingAudioRef.current = false
     
     setConnectionState({ status: 'disconnected' })
     setIsListening(false)
